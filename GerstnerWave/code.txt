@@ -1,0 +1,150 @@
+class Fluid {
+	int width;
+	int height;
+	float d;
+	glm::vec3 *buffer;
+	glm::vec3 *normal;
+	const float PI = 3.1415926535;
+	vector<unsigned int>indices;
+	
+
+	float Q1 = 0.1; float A1 = 1; float w1 = PI * 0.4; float phi1 = PI * 0.2; glm::vec2 D1 = glm::vec2(1, 2);
+	glm::vec3 Gxyz(float Q, float A, glm::vec2 D, glm::vec2 Pos, float w, float phi, float time)
+	{
+		//Q1 = 1.0 / (w*A);
+		D = glm::normalize(D);
+		float CC = cos(w*glm::dot(D, Pos) + time * phi);
+		float X = Q * A*D.x*CC;
+		float Y = Q * A*D.y*CC;
+		float Z = A * sin(w*glm::dot(D, Pos) + time * phi);
+		return glm::vec3(X,Y,Z);
+	}
+	glm::vec3 getNormal(float Q, float A, glm::vec2 D, glm::vec2 Pos, float w, float phi, float time)
+	{
+		
+		D = glm::normalize(D);
+		float CC = cos(w*glm::dot(D, Pos) + time * phi);
+		float SS = sin(w*glm::dot(D, Pos) + time * phi);
+		
+		float WA = w * A;
+		return glm::vec3(
+			D.x*WA*CC,
+			D.y*WA*CC,
+			Q*WA*SS
+		);
+	}
+	void Evaluate(float time)
+	{
+		for (int j = 0; j < height; j++)
+		{
+			glm::vec3 *crnt = buffer + j * width;
+			glm::vec3 *nrml = normal + j * width;
+			for (int i = 0; i < width; i++)
+			{
+				float x = i*d;
+				float y = j*d;
+				glm::vec3 H = glm::vec3(0);
+
+				glm::vec2 pos = glm::vec2(x, y);
+				H += Gxyz(Q1, A1, D1, pos, w1, phi1, time);
+								
+				crnt[i].x = d * i + H.x;
+				crnt[i].y = d * j + H.y;
+				crnt[i].z = H.z;
+
+				glm::vec3 Normal = glm::vec3(0);
+				Normal+= getNormal(Q1, A1, D1, pos, w1, phi1, time);
+
+				Normal = glm::vec3(0, 0, 1) - Normal;
+				nrml[i]=Normal;
+			}
+		}
+	}
+public:
+	Fluid(int n, int m,float dd)
+	{
+		width = n;
+		height = m;
+		int count = n * m;
+		d = dd;
+		buffer= new glm::vec3[count];
+		normal = new glm::vec3[count];
+
+		int a = 0;
+		for (int j = 0; j < m; j++)
+		{
+			float y = d * j;
+			for (int i = 0; i < n; i++)
+			{
+				buffer[a] = glm::vec3(d*i, y, 0);
+				normal[a] = glm::vec3(0, 0, 1.0);
+				a++;
+			}
+		}
+		for (int j = 1; j < m; j++)
+		{
+			for (int i = 0; i < n - 1; i++)
+			{
+				indices.push_back(j*n + i);
+				indices.push_back(j*n + i - n);
+				indices.push_back(j*n + i - n + 1);
+
+				indices.push_back(j*n + i);
+				indices.push_back(j*n + i - n + 1);
+				indices.push_back(j*n + i + 1);
+			}
+		}
+	}
+	
+	void renderFluid(float time)
+	{
+		
+		Evaluate(time);
+		vector<float>data;
+		int indexCount = indices.size();
+
+		for (int i = 0; i < width*height; ++i)
+		{
+			data.push_back(buffer[i].x);
+			data.push_back(buffer[i].y);
+			data.push_back(buffer[i].z);
+		
+			
+			data.push_back(normal[i].x);
+			data.push_back(normal[i].y);
+			data.push_back(normal[i].z);
+		}
+
+		unsigned int FluidVAO, FluidVBO, FluidEBO;
+		glGenVertexArrays(1, &FluidVAO);
+		glGenBuffers(1, &FluidVBO);
+		glGenBuffers(1, &FluidEBO);
+
+		glBindVertexArray(FluidVAO);
+		glBindBuffer(GL_ARRAY_BUFFER, FluidVBO);
+		glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STREAM_DRAW);
+
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, FluidEBO);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STREAM_DRAW);
+
+		float stride = (3 + 3) * sizeof(float);
+
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+
+		glBindVertexArray(FluidVAO);
+		glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+		
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		glBindVertexArray(0);
+	}
+	~Fluid()
+	{
+		delete[]normal;
+		delete[]buffer;
+	}
+};
+
